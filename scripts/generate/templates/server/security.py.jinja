@@ -1,0 +1,53 @@
+"""{{ server.display_name }} MCP Server - Security utilities for write protection"""
+
+from functools import wraps
+from typing import Callable, Any, Optional
+import structlog
+
+from {{ server.package_name }}.config import MCPSettings
+
+logger = structlog.get_logger(__name__)
+
+# Store settings globally for decorator access
+_mcp_settings: Optional[MCPSettings] = None
+
+
+def init_security(settings: MCPSettings) -> None:
+    """Initialize security module with settings"""
+    global _mcp_settings
+    _mcp_settings = settings
+    logger.info(
+        "Security initialized",
+        allow_write=settings.allow_write,
+        mode="READ_ONLY" if not settings.allow_write else "READ_WRITE",
+    )
+
+
+def is_write_allowed() -> bool:
+    """Check if write operations are allowed"""
+    if _mcp_settings is None:
+        logger.warning("Security not initialized, defaulting to read-only")
+        return False
+    return _mcp_settings.allow_write
+
+
+def write_protected(func: Callable) -> Callable:
+    """
+    Decorator to protect write operations.
+    If write is not allowed, raises an error.
+    """
+    @wraps(func)
+    async def wrapper(*args, **kwargs) -> Any:
+        if not is_write_allowed():
+            logger.warning(
+                "Write operation blocked",
+                operation=func.__name__,
+                mode="READ_ONLY",
+            )
+            raise PermissionError(
+                f"Write operations are disabled. "
+                f"Set MCP_ALLOW_WRITE=true to enable {func.__name__}."
+            )
+        return await func(*args, **kwargs)
+    
+    return wrapper

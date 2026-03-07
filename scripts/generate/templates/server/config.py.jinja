@@ -1,0 +1,57 @@
+"""{{ server.display_name }} MCP Server - Configuration"""
+
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+class {{ rpc.client_class_name }}Settings(BaseSettings):
+    """{{ server.display_name }} RPC Configuration"""
+    
+    rpc_host: str = "{{ server.host }}"
+    rpc_port: int = {{ server.port }}
+    rpc_user: str = ""
+    rpc_password: str = ""
+    rpc_timeout: int = {{ server.timeout }}
+    
+    model_config = SettingsConfigDict(
+        env_prefix="",
+        env_file=str(_PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+    
+    @property
+    def rpc_url(self) -> str:
+        return f"http://{self.rpc_host}"
+    
+    @property
+    def full_url(self) -> str:
+        return f"{self.rpc_url}:{self.rpc_port}"
+    
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.rpc_user and self.rpc_password)
+
+
+class MCPSettings(BaseSettings):
+    """MCP Server Configuration"""
+    
+    server_name: str = "{{ server.server_name }}"
+    log_level: str = "INFO"
+    allow_write: bool = False
+    
+    model_config = SettingsConfigDict(
+        env_prefix="MCP_",
+        env_file=str(_PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
+
+def get_settings() -> tuple[{{ rpc.client_class_name }}Settings, MCPSettings]:
+    """Get configured settings"""
+    rpc = {{ rpc.client_class_name }}Settings()
+    mcp = MCPSettings()
+    return rpc, mcp

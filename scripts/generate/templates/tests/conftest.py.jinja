@@ -1,0 +1,307 @@
+"""Pytest configuration for Blocknet MCP integration tests
+
+This file is auto-generated. Do not edit manually.
+"""
+
+import os
+import time
+import logging
+import structlog
+from dataclasses import dataclass, field
+from pathlib import Path
+import sys
+import pytest
+import pytest_asyncio
+from dotenv import load_dotenv
+
+# Setup paths
+project_root = Path(__file__).parent.parent.parent
+generated_path = project_root / "generated"
+sys.path.insert(0, str(generated_path))
+
+# Load environment
+test_env = project_root / ".test_env"
+load_dotenv(test_env if test_env.exists() else project_root / ".env", override=True)
+
+# Configure standard logging
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    level=os.getenv("LOG_LEVEL", "DEBUG").upper(),
+    force=True,
+)
+
+# Configure structlog to use standard logging
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.dev.ConsoleRenderer(),
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=False,
+)
+logger = structlog.get_logger()
+
+
+# RPC Settings fixture (class-scoped for async compatibility)
+@pytest.fixture(scope="class")
+def rpc_settings(request):
+    """Auto-detect server type from test file path"""
+    test_file = request.module.__file__
+    if "xbridge" in test_file.lower():
+        prefix = "dx"
+    elif "xrouter" in test_file.lower():
+        prefix = "xr"
+    else:
+        prefix = os.getenv("MCP_TEST_PREFIX", "dx")
+    
+    user = os.getenv("RPC_USER")
+    pwd = os.getenv("RPC_PASSWORD")
+    host = os.getenv("RPC_HOST", "localhost")
+    port = os.getenv("RPC_PORT", "41414")
+    
+    if not user or not pwd:
+        pytest.skip("RPC credentials not set")
+    
+    return {
+        "url": f"http://{user}:{pwd}@{host}:{port}",
+        "user": user,
+        "password": pwd,
+        "prefix": prefix,
+    }
+
+
+# RPC Client fixture (class-scoped for async compatibility)
+@pytest_asyncio.fixture(scope="class")
+async def rpc_client(rpc_settings):
+    if rpc_settings["prefix"] == "dx":
+        from xbridge_mcp.rpc.client import AsyncXBridgeClient
+        client_class = AsyncXBridgeClient
+    else:
+        from xrouter_mcp.rpc.client import AsyncXRouterClient
+        client_class = AsyncXRouterClient
+    
+    client = client_class(
+        rpc_url=rpc_settings["url"],
+        rpc_user=rpc_settings["user"],
+        rpc_password=rpc_settings["password"],
+        timeout=30,
+    )
+    await client.connect()
+    yield client
+    await client.close()
+
+
+# Test context for discovered data
+@dataclass
+class TestContext:
+    maker: str = "BLOCK"
+    taker: str = "LTC"
+    order_ids: list[str] = field(default_factory=list)
+    block_chain: str = "BLOCK"
+    block_height: int | None = None
+    block_hash: str | None = None
+    utxos: list[dict] = field(default_factory=list)
+    tx_hex: str | None = None
+    last_uuid: str | None = None
+
+
+# Helper functions
+def resolve_params(template: dict, ctx: TestContext) -> dict:
+    """Replace placeholders in parameter template with runtime values"""
+    now = int(time.time())
+    mapping = {
+        "MAKER": ctx.maker,
+        "TAKER": ctx.taker,
+        "BLOCKCHAIN": ctx.block_chain,
+        "FIRST_ORDER_ID": ctx.order_ids[0] if ctx.order_ids else None,
+        "HEIGHT": str(ctx.block_height) if ctx.block_height else None,
+        "HASH": ctx.block_hash,
+        "EPOCH_NOW": now,
+        "EPOCH_1D_AGO": now - 86400,
+        "DUMMY": "0" * 64,
+        "TX_HEX": ctx.tx_hex,
+        "LAST_UUID": ctx.last_uuid,
+    }
+    return {k: mapping.get(v, v) for k, v in template.items()}
+
+
+async def safe_call(rpc_client, method: str, params: list, expected_type: str):
+    """Call RPC method and validate response type"""
+    try:
+        result = await rpc_client.call(method, params)
+        if result is None:
+            return False, None, "Empty response (None)"
+        if expected_type == "dict" and not isinstance(result, dict):
+            return False, result, f"Expected dict, got {type(result).__name__}"
+        if expected_type == "list" and not isinstance(result, list):
+            return False, result, f"Expected list, got {type(result).__name__}"
+        return True, result, None
+    except Exception as e:
+        return False, None, str(e)
+
+
+# Discovery fixture (class-scoped for async compatibility)
+@pytest_asyncio.fixture(scope="class")
+async def test_context(rpc_client) -> TestContext:
+    """Discover runtime data from the node"""
+    ctx = TestContext()
+    is_xbridge = "XBridge" in rpc_client.__class__.__name__
+    
+    logger.info("Starting discovery", client_type=rpc_client.__class__.__name__)
+    
+    if is_xbridge:
+        # XBridge discovery
+        logger.info("Starting XBridge discovery")
+        
+        # Get orders to extract an order ID for dxGetOrder test
+        logger.info("Fetching orders for discovery")
+        try:
+            success, data, _ = await safe_call(rpc_client, "dxGetOrders", [], "list")
+            if success and isinstance(data, list):
+                if data and len(data) > 0:
+                    # Extract first order ID
+                    first_order = data[0]
+                    if isinstance(first_order, dict):
+                        order_id = first_order.get('id')
+                        if order_id:
+                            ctx.order_ids = [order_id]
+                            logger.info("Discovered order ID", order_id=order_id, total_orders=len(data))
+                        else:
+                            logger.warning("First order has no 'id' field", order_keys=list(first_order.keys()))
+                    else:
+                        logger.warning("Order is not a dict", order_type=type(first_order).__name__)
+                else:
+                    logger.warning("No orders returned from dxGetOrders")
+            else:
+                logger.warning("Failed to get orders", success=success, error=_ if '_' in locals() else 'unknown')
+        except Exception as e:
+            logger.warning("XBridge discovery step failed", step="dxGetOrders", error=str(e))
+    else:
+        # XRouter discovery
+        logger.info("Discovering XRouter network services")
+        try:
+            success, data, _ = await safe_call(rpc_client, "xrGetNetworkServices", [], "dict")
+            if success and isinstance(data, dict):
+                wallets = data.get("spvwallets", [])
+                if wallets:
+                    ctx.block_chain = wallets[0].replace("xr::", "")
+                    logger.info("Discovered blockchain", blockchain=ctx.block_chain)
+        except Exception as e:
+            logger.warning("XRouter discovery step failed", step="xrGetNetworkServices", error=str(e))
+        
+        # Discover block data
+        if ctx.block_chain:
+            logger.info("Discovering block count", blockchain=ctx.block_chain)
+            try:
+                success, data, _ = await safe_call(rpc_client, "xrGetBlockCount", [ctx.block_chain], "dict")
+                if success and isinstance(data, dict):
+                    # xrGetBlockCount returns {"reply": height, "uuid": "..."}
+                    height = data.get('reply')
+                    if height:
+                        ctx.block_height = int(height)
+                        logger.info("Discovered block height", height=ctx.block_height)
+                        
+                        try:
+                            success2, data2, _ = await safe_call(
+                                rpc_client, "xrGetBlockHash",
+                                [ctx.block_chain, str(ctx.block_height)],
+                                "dict"
+                            )
+                            if success2 and isinstance(data2, dict):
+                                # xrGetBlockHash returns {"reply": hash, "uuid": "..."}
+                                ctx.block_hash = data2.get('reply')
+                                if ctx.block_hash:
+                                    logger.info("Discovered block hash", hash=ctx.block_hash)
+                                    
+                                    # Get block to extract a transaction ID
+                                    logger.info("Fetching block data for transaction discovery")
+                                    try:
+                                        success3, data3, _ = await safe_call(
+                                            rpc_client, "xrGetBlock",
+                                            [ctx.block_chain, ctx.block_hash],
+                                            "dict"
+                                        )
+                                        if success3 and isinstance(data3, dict):
+                                            logger.info("Got block data", block_data_keys=list(data3.keys()))
+                                            # xrGetBlock returns {"reply": {block_data}, "uuid": "..."}
+                                            block_reply = data3.get('reply', {})
+                                            if isinstance(block_reply, dict):
+                                                tx_list = block_reply.get('tx', [])
+                                                if tx_list and isinstance(tx_list, list) and len(tx_list) > 0:
+                                                    txid = tx_list[0]
+                                                    logger.info("Found transaction ID", txid=txid)
+                                                    
+                                                    # Store transaction ID for xrGetTransaction/xrGetTransactions tests
+                                                    ctx.order_ids = [txid]
+                                                    
+                                                    # Get transaction hex via xrGetTransaction
+                                                    try:
+                                                        success4, data4, _ = await safe_call(
+                                                            rpc_client, "xrGetTransaction",
+                                                            [ctx.block_chain, txid, 2],
+                                                            "dict"
+                                                        )
+                                                        if success4 and isinstance(data4, dict):
+                                                            logger.info("Got transaction response", response_keys=list(data4.keys()))
+                                                            # xrGetTransaction returns {"reply": {tx_data}, "uuid": "..."}
+                                                            tx_data = data4.get('reply', {})
+                                                            if isinstance(tx_data, dict):
+                                                                hex_str = tx_data.get('hex')
+                                                                if hex_str:
+                                                                    ctx.tx_hex = hex_str
+                                                                    logger.info("Discovered transaction hex", tx_hex_len=len(hex_str))
+                                                                else:
+                                                                    logger.warning("No hex field in transaction data", tx_data_keys=list(tx_data.keys()) if isinstance(tx_data, dict) else type(tx_data))
+                                                        else:
+                                                            logger.warning("Failed to get transaction", success=success4)
+                                                    except Exception as e:
+                                                        logger.warning("XRouter discovery step failed", step="xrGetTransaction", error=str(e))
+                                            else:
+                                                logger.warning("Block reply is not a dict", reply_type=type(block_reply).__name__)
+                                        else:
+                                            logger.warning("Failed to get block", success=success3)
+                                    except Exception as e:
+                                        logger.warning("XRouter discovery step failed", step="xrGetBlock", error=str(e))
+                            else:
+                                logger.warning("Failed to get block hash", success=success2)
+                        except Exception as e:
+                            logger.warning("XRouter discovery step failed", step="xrGetBlockHash", error=str(e))
+                    else:
+                        logger.warning("No height in block count response")
+                else:
+                    logger.warning("Failed to get block count", success=success)
+            except Exception as e:
+                logger.warning("XRouter discovery step failed", step="xrGetBlockCount", error=str(e))
+        
+        # Discover a UUID from an XRouter call (for xrGetReply tests)
+        if ctx.block_chain:
+            logger.info("Fetching UUID for xrGetReply testing", blockchain=ctx.block_chain)
+            try:
+                success, data, _ = await safe_call(
+                    rpc_client, "xrGetBlockCount",
+                    [ctx.block_chain, 2],
+                    "dict"
+                )
+                if success and isinstance(data, dict):
+                    uuid = data.get('uuid')
+                    if uuid:
+                        ctx.last_uuid = uuid
+                        logger.info("Discovered UUID", uuid=uuid)
+            except Exception as e:
+                logger.warning("XRouter discovery step failed", step="xrGetBlockCount_for_uuid", error=str(e))
+    
+    logger.info("Discovery complete", 
+                blockchain=ctx.block_chain,
+                block_height=ctx.block_height,
+                has_tx_hex=bool(ctx.tx_hex),
+                has_uuid=bool(ctx.last_uuid))
+    
+    return ctx

@@ -1,0 +1,180 @@
+"""{{ server.display_name }} RPC Client"""
+
+from typing import Any, Optional
+import httpx
+import orjson
+import structlog
+
+from {{ server.package_name }}.rpc.exceptions import (
+    {{ rpc.client_class_name }}RPCError,
+    {{ rpc.client_class_name }}ConnectionError,
+    {{ rpc.client_class_name }}AuthError,
+    {{ rpc.client_class_name }}TimeoutError,
+    parse_rpc_error,
+)
+
+
+logger = structlog.get_logger(__name__)
+
+
+class {{ rpc.client_class_name }}:
+    """Async JSON-RPC client for {{ server.display_name }}"""
+    
+    def __init__(
+        self,
+        rpc_url: str,
+        rpc_user: str,
+        rpc_password: str,
+        timeout: int = {{ server.timeout }},
+    ):
+        self.rpc_url = rpc_url
+        self.rpc_user = rpc_user
+        self.rpc_password = rpc_password
+        self.timeout = timeout
+        self._client: Optional[httpx.AsyncClient] = None
+        self._request_id = 0
+    
+    async def __aenter__(self) -> "{{ rpc.client_class_name }}":
+        await self.connect()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.close()
+    
+    async def connect(self) -> None:
+        """Initialize HTTP client"""
+        auth = httpx.BasicAuth(self.rpc_user, self.rpc_password)
+        self._client = httpx.AsyncClient(
+            auth=auth,
+            base_url=self.rpc_url,
+            timeout=httpx.Timeout(self.timeout),
+        )
+        logger.info("Connected to RPC", url=self.rpc_url)
+    
+    async def close(self) -> None:
+        """Close HTTP client"""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+            logger.info("Disconnected from RPC")
+    
+    async def call(self, method: str, params: list = None) -> Any:
+        """
+        Make a JSON-RPC call to {{ server.display_name }}.
+        
+        Args:
+            method: The RPC method name (e.g., "{{ rpc.prefix }}MakeOrder")
+            params: List of parameters
+            
+        Returns:
+            The result from the RPC call
+            
+        Raises:
+            {{ rpc.client_class_name }}RPCError: On RPC-level errors
+            {{ rpc.client_class_name }}ConnectionError: On connection errors
+            {{ rpc.client_class_name }}AuthError: On authentication errors
+        """
+        if params is None:
+            params = []
+        
+        self._request_id += 1
+        request_id = self._request_id
+        
+        payload = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": params,
+        }
+        
+        logger.debug(
+            "RPC request",
+            method=method,
+            params=params,
+            request_id=request_id,
+        )
+        
+        try:
+            response = await self._client.post(
+                "/",
+                content=orjson.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            
+            # Check HTTP-level errors
+            if response.status_code == 401:
+                raise {{ rpc.client_class_name }}AuthError("Authentication failed", 401, method)
+            
+            response.raise_for_status()
+            
+        except httpx.TimeoutException as e:
+            logger.error("RPC timeout", method=method, error=str(e))
+            raise {{ rpc.client_class_name }}TimeoutError(f"Request timed out: {e}", method=method)
+        
+        except httpx.ConnectError as e:
+            logger.error("RPC connection failed", method=method, error=str(e))
+            raise {{ rpc.client_class_name }}ConnectionError(f"Connection failed: {e}", method=method)
+        
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "RPC HTTP error",
+                method=method,
+                status=e.response.status_code,
+            )
+            # Try to extract JSON-RPC error from response body
+            try:
+                json_body = orjson.loads(e.response.content)
+                if "error" in json_body:
+                    error_code = json_body["error"].get("code", -1)
+                    error_msg = json_body["error"].get("message", str(e))
+                    raise {{ rpc.client_class_name }}RPCError(error_msg, error_code, method) from e
+            except orjson.JSONDecodeError:
+                pass  # Fall back to HTTP status code
+            raise {{ rpc.client_class_name }}RPCError(
+                f"HTTP error: {e.response.status_code}",
+                e.response.status_code,
+                method,
+            )
+        
+        # Parse JSON response
+        try:
+            data = orjson.loads(response.content)
+        except orjson.JSONDecodeError as e:
+            logger.error("Invalid JSON response", method=method, error=str(e))
+            raise {{ rpc.client_class_name }}RPCError(f"Invalid JSON: {e}", method=method)
+        
+        logger.debug(
+            "RPC response",
+            method=method,
+            request_id=request_id,
+            has_result=data.get("result") is not None,
+            has_error=bool(data.get("error")),
+        )
+        
+        # Check for RPC-level errors
+        top_level_error = data.get("error")
+        if top_level_error:
+            error_msg = top_level_error.get("message", str(top_level_error))
+            error_code = top_level_error.get("code", -1)
+            raise {{ rpc.client_class_name }}RPCError(error_msg, error_code, method)
+        
+        result = data.get("result")
+        if result is None:
+            raise {{ rpc.client_class_name }}RPCError("No result in response", method=method)
+        
+        # Auto-parse JSON strings FIRST (some APIs return errors as JSON-encoded strings)
+        if isinstance(result, str):
+            try:
+                result = orjson.loads(result)
+            except orjson.JSONDecodeError:
+                pass  # Keep as string if not valid JSON
+        
+        # Check if result contains error (Blocknet style: result = {"error": "...", "code": 1021, ...})
+        if isinstance(result, dict) and "error" in result:
+            error_message = result["error"]
+            error_code = result.get("code")
+            error_name = result.get("name", method)
+            if error_message:
+                raise {{ rpc.client_class_name }}RPCError(str(error_message), error_code, error_name)
+        
+        return result

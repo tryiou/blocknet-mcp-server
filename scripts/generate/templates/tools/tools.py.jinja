@@ -1,0 +1,62 @@
+"""Generated MCP Tools
+Generated: {{ generated_timestamp }}
+DO NOT EDIT MANUALLY - This file is generated from API documentation
+"""
+
+from mcp.server.fastmcp import FastMCP
+import structlog
+
+from {{ server.package_name }}.security import write_protected
+
+# Create a FastMCP instance for tool decoration
+_mcp = FastMCP("temp")
+mcp_tool = _mcp.tool
+
+logger = structlog.get_logger(__name__)
+
+# Placeholder - will be set by register_generated_tools
+get_client = None
+
+{% for rpc_method, endpoint in endpoints.items() %}
+{{ decorator_for(endpoint.tool_name, write_protected_tools) }}
+async def {{ endpoint.tool_name }}({% if endpoint.params %}
+{{ format_params(endpoint.params) }}
+{% endif %}) -> {{ endpoint.response_type }}:
+    """
+    {{ endpoint.description }}
+    {% if endpoint.params %}
+    Args:
+        {% for param in endpoint.params %}
+        {{ param.name }}: {{ param.description }} ({% if param.required %}required{% else %}optional{% endif %})
+        {% endfor %}
+    {% endif %}
+    """
+    logger.info("{{ endpoint.tool_name }}_called")
+    
+    params = [{% if endpoint.params %}{% for param in endpoint.params %}{{ param.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}]
+    client = get_client()
+    result = await client.call("{{ rpc_method }}", params)
+    
+    logger.info("{{ endpoint.tool_name }}_completed")
+    return result
+
+{% endfor %}
+
+# Store tools for registration
+_generated_tools = []
+
+def register_generated_tools(mcp: FastMCP, get_client_func):
+    """Register all generated tools with MCP server"""
+    global get_client
+    get_client = get_client_func
+    
+    # Import and register each tool
+    import sys
+    this_module = sys.modules[__name__]
+    
+    # Find all async functions decorated with @mcp.tool()
+    for name in dir(this_module):
+        if name.startswith("{{ tool_prefix }}"):
+            func = getattr(this_module, name)
+            if callable(func):
+                mcp.add_tool(func)

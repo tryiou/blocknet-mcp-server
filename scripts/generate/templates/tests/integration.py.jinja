@@ -1,0 +1,72 @@
+"""Integration tests for {{ server.display_name }} MCP Server
+
+This file is auto-generated from API documentation.
+Generated: {{ generated_timestamp }}
+
+Do not edit manually - regenerate with: python main.py {{ prefix|upper }}
+"""
+
+import pytest
+from conftest import resolve_params, safe_call
+{% if prefix == 'dx' %}
+from xbridge_mcp.rpc.exceptions import AsyncXBridgeClientRPCError
+{% else %}
+from xrouter_mcp.rpc.exceptions import AsyncXRouterClientRPCError
+{% endif %}
+
+
+@pytest.mark.asyncio(loop_scope="class")
+class Test{{ server.display_name.replace(' ', '') }}:
+    {% for ep in endpoints %}
+    {% if ep.skip %}
+    @pytest.mark.skip(reason="No sample data available for this endpoint")
+    {% endif %}
+    async def test_{{ ep.tool_name }}(self, rpc_client, test_context):
+        """{{ ep.description[:80] if ep.description else ep.rpc_method }}"""
+        {% if ep.skip_condition %}
+        # Check if required discovery data is available
+        if {{ ep.skip_condition }}:
+            pytest.skip("Required discovery data missing")
+        {% endif %}
+        # Build parameters from template
+        template = {{ ep.param_template }}
+        resolved = resolve_params(template, test_context)
+        # Preserve parameter order
+        params = [resolved[name] for name in {{ ep.param_names }}]
+        
+        # Call and validate
+        success, data, error = await safe_call(rpc_client, "{{ ep.rpc_method }}", params, "{{ ep.expected_type }}")
+        
+        assert success, f"{{ ep.tool_name }} failed: {error}. Params: {params}, Got: {data}"
+        
+        # Additional type-specific checks
+        {% if ep.expected_type == 'list' %}
+        assert isinstance(data, list), f"Expected list, got {type(data).__name__}"
+        {% elif ep.expected_type == 'dict' %}
+        assert isinstance(data, dict), f"Expected dict, got {type(data).__name__}"
+        {% endif %}
+    {% endfor %}
+
+
+@pytest.mark.asyncio(loop_scope="class")
+class Test{{ server.display_name.replace(' ', '') }}Errors:
+    """Error path tests - validate that invalid inputs raise proper RPC errors"""
+    
+    {% for ep in endpoints if not ep.skip and ep.has_params %}
+    async def test_{{ ep.tool_name }}_invalid_params(self, rpc_client, test_context):
+        """Test {{ ep.tool_name }} with invalid parameters raises RPC error"""
+        # Use invalid parameter values to trigger error
+        template = {{ ep.invalid_param_template }}
+        resolved = resolve_params(template, test_context)
+        params = [resolved[name] for name in {{ ep.param_names }}]
+        
+        # Expect RPC error
+        with pytest.raises(Async{{ server.display_name.replace(' ', '') }}ClientRPCError) as exc_info:
+            await rpc_client.call("{{ ep.rpc_method }}", params)
+        
+        # Verify error code is a documented one (if available)
+        error_code = exc_info.value.code
+        {% if global_error_codes %}
+        assert error_code in {{ global_error_codes }}, f"Unexpected error code {error_code} for {{ ep.rpc_method }}"
+        {% endif %}
+    {% endfor %}

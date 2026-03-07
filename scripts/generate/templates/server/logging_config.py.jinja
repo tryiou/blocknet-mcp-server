@@ -1,0 +1,27 @@
+"""{{ server.display_name }} MCP Server - Logging Configuration"""
+
+import sys
+import structlog
+
+
+def setup_logging(level: str = "INFO") -> None:
+    """Configure structlog for structured logging to stderr"""
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="%Y-%m-%dT%H:%M:%S.%fZ", utc=False),
+            structlog.dev.set_exc_info,
+            structlog.processors.format_exc_info,
+            structlog.dev.ConsoleRenderer(),
+        ],
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        wrapper_class=structlog.make_filtering_bound_logger(level),
+        cache_logger_on_first_use=False,
+    )
+
+
+def get_logger(name: str):
+    """Get a structured logger"""
+    return structlog.get_logger(name)

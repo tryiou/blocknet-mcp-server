@@ -1,0 +1,135 @@
+"""{{ server.display_name }} MCP Server - Main Entry Point"""
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import asyncio
+
+from mcp.server.fastmcp import FastMCP
+
+from {{ server.package_name }}.config import get_settings
+from {{ server.package_name }}.logging_config import setup_logging, get_logger
+from {{ server.package_name }}.rpc.client import {{ rpc.client_class_name }}
+from {{ server.package_name }}.generated import register_generated_tools
+from {{ server.package_name }}.security import init_security
+
+
+# Global client instance
+_{{ server.env_prefix.lower() }}_client: {{ rpc.client_class_name }} | None = None
+_logger = None
+
+
+
+def get_client() -> {{ rpc.client_class_name }}:
+    """Get the RPC client instance."""
+    global _{{ server.env_prefix.lower() }}_client
+    if _{{ server.env_prefix.lower() }}_client is None:
+        raise RuntimeError("RPC client not initialized")
+    return _{{ server.env_prefix.lower() }}_client
+
+
+async def init_client() -> None:
+    """Initialize the RPC client"""
+    global _{{ server.env_prefix.lower() }}_client
+    
+    rpc_settings, mcp_settings = get_settings()
+    
+    if not rpc_settings.is_configured:
+        raise ValueError(
+            "{{ server.display_name }} RPC not configured. Set {{ server.env_prefix }}_RPC_USER and {{ server.env_prefix }}_RPC_PASSWORD "
+            "environment variables or create a .env file."
+        )
+    
+    _{{ server.env_prefix.lower() }}_client = {{ rpc.client_class_name }}(
+        rpc_url=rpc_settings.full_url,
+        rpc_user=rpc_settings.rpc_user,
+        rpc_password=rpc_settings.rpc_password,
+        timeout=rpc_settings.rpc_timeout,
+    )
+    
+    await _{{ server.env_prefix.lower() }}_client.connect()
+    _logger.info(
+        "RPC client initialized",
+        url=rpc_settings.full_url,
+    )
+
+
+async def cleanup_client() -> None:
+    """Cleanup the RPC client"""
+    global _{{ server.env_prefix.lower() }}_client
+    if _{{ server.env_prefix.lower() }}_client:
+        await _{{ server.env_prefix.lower() }}_client.close()
+        _{{ server.env_prefix.lower() }}_client = None
+
+
+def create_mcp_server() -> FastMCP:
+    """Create and configure the MCP server"""
+    
+    rpc_settings, mcp_settings = get_settings()
+    
+    # Setup logging
+    setup_logging(mcp_settings.log_level)
+    global _logger
+    _logger = get_logger(__name__)
+    
+    # Initialize security module
+    init_security(mcp_settings)
+    
+    # Create FastMCP server
+    mcp = FastMCP(mcp_settings.server_name)
+    
+    # Register all tools
+    register_generated_tools(mcp, get_client)
+    
+    _logger.info(
+        "MCP server created",
+        server_name=mcp_settings.server_name,
+        allow_write=mcp_settings.allow_write,
+    )
+    
+    return mcp
+
+
+async def run_server() -> None:
+    """Run the MCP server"""
+    global _logger
+    
+    rpc_settings, mcp_settings = get_settings()
+    
+    # Setup logging
+    setup_logging(mcp_settings.log_level)
+    _logger = get_logger(__name__)
+    
+    _logger.info(
+        "Starting {{ server.display_name }} MCP Server",
+        rpc_url=rpc_settings.full_url,
+        allow_write=mcp_settings.allow_write,
+    )
+    
+    # Initialize clients
+    await init_client()
+    
+    # Create MCP server
+    mcp = create_mcp_server()
+    
+    # Run the server (this blocks)
+    try:
+        await mcp.run_stdio_async()
+    finally:
+        await cleanup_client()
+
+
+def main():
+    """Main entry point"""
+    try:
+        asyncio.run(run_server())
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+    except Exception as e:
+        print(f"Error: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    main()
