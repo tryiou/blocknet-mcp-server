@@ -3,6 +3,7 @@
 .venv/
 *.pyc
 .env
+AGENTS.md
 generated/
 opencode.json
 blocknet-api-docs/
