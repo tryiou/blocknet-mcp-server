@@ -562,7 +562,7 @@ MIT License - see LICENSE file for details.
 
 - **Issues**: Report bugs and request features via GitHub Issues
 - **Discussions**: Join the conversation via GitHub Discussions
-- **Blocknet Community**: [Discord](https://discord.gg/blocknet) | [Twitter](https://twitter.com/BlocknetDX)
+- **Blocknet Community**: [Discord](https://discord.gg/F3h327UQ) 
 
 ---
 
