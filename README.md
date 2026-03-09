@@ -81,7 +81,7 @@ Clone the repository and set up the environment:
 
 ```bash
 git clone <repository-url>
-cd blocknet_mcp
+cd blocknet-mcp-server
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -264,7 +264,7 @@ class ApiSpec:
 ## Project Structure
 
 ```
-blocknet_mcp/
+blocknet-mcp-server/
 ├── main.py                 # CLI entry point
 ├── requirements.txt        # Python dependencies
 ├── .ruff.toml             # Lint/format configuration
