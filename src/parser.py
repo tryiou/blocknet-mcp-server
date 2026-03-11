@@ -14,6 +14,47 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import structlog
+import yaml
+
+logger = structlog.get_logger(__name__)
+
+
+def _load_preserved_config() -> dict[str, list[str]]:
+    """Load preserved endpoints from YAML config.
+
+    Returns:
+        Dictionary mapping prefix to list of endpoint names to preserve.
+        Returns empty dict if YAML not found or invalid.
+    """
+    config_path = Path(__file__).parent / "preserved_endpoints.yaml"
+    if config_path.exists():
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if isinstance(data, dict):
+                    dx_val = data.get("dx")
+                    xr_val = data.get("xr")
+                    result = {}
+                    if isinstance(dx_val, list):
+                        result["dx"] = dx_val
+                    elif dx_val is not None:
+                        logger.warning("preserved_endpoints.yaml 'dx' must be a list, ignoring")
+                    if isinstance(xr_val, list):
+                        result["xr"] = xr_val
+                    elif xr_val is not None:
+                        logger.warning("preserved_endpoints.yaml 'xr' must be a list, ignoring")
+                    if result:
+                        return result
+                else:
+                    logger.warning("Invalid preserved_endpoints.yaml format, expected dict")
+        except Exception as e:
+            logger.warning("Failed to load preserved_endpoints.yaml", error=str(e))
+    return {}
+
+
+PRESERVED_ENDPOINTS = _load_preserved_config()
+
 
 @dataclass
 class ParamSpec:
@@ -96,8 +137,19 @@ class MarkdownParser:
         """Load the documentation file"""
         with open(self.doc_path, encoding="utf-8") as f:
             self.content = f.read()
-        # Remove HTML comments (<!-- ... -->) as they contain disabled endpoints
+
+        preserved_endpoints = PRESERVED_ENDPOINTS.get(self.rpc_prefix, [])
+        preserved_sections = self._extract_preserved_endpoints(preserved_endpoints)
+
         self.content = re.sub(r"<!--.*?-->", "", self.content, flags=re.DOTALL)
+
+        if preserved_sections:
+            self._insert_preserved_endpoints(preserved_sections)
+            logger.info(
+                "Restored preserved endpoints from comments",
+                prefix=self.rpc_prefix,
+                endpoints=list(preserved_sections.keys()),
+            )
 
     def parse(self) -> ApiSpec:
         """Parse the documentation and return API spec"""
@@ -115,6 +167,50 @@ class MarkdownParser:
                 spec.endpoints[endpoint.rpc_method] = endpoint
 
         return spec
+
+    def _extract_preserved_endpoints(self, endpoint_names: list[str]) -> dict[str, str]:
+        """Extract preserved endpoints from HTML comments.
+
+        Algorithm:
+        1. Find all HTML comment blocks
+        2. For each block, extract all ## [endpoint] sections
+        3. Filter to keep only the ones we want to preserve
+
+        This handles:
+        - Multi-endpoint comment blocks (e.g., xrService and xrServiceConsensus in same <!-- -->)
+        - Same-line comment starts (e.g., <!-- ## endpoint)
+        - Different whitespace patterns after <!--
+
+        Args:
+            endpoint_names: List of endpoint names to preserve (e.g., ['xrService', 'xrServiceConsensus'])
+
+        Returns:
+            Dictionary mapping endpoint name to its full section content
+        """
+        preserved = {}
+
+        comment_pattern = r"<!--(.*?)-->"
+        for comment_match in re.finditer(comment_pattern, self.content, re.DOTALL):
+            comment_content = comment_match.group(1)
+
+            section_pattern = rf"## ({self.rpc_prefix}\w+)\s*\n(.*?)(?=## {self.rpc_prefix}\w+|## Status|## Error|\Z)"
+            for section_match in re.finditer(section_pattern, comment_content, re.DOTALL | re.IGNORECASE):
+                endpoint_name = section_match.group(1)
+
+                if endpoint_name in endpoint_names:
+                    preserved[endpoint_name] = section_match.group(2)
+
+        return preserved
+
+    def _insert_preserved_endpoints(self, sections: dict[str, str]) -> None:
+        """Insert preserved endpoints into the content.
+
+        Args:
+            sections: Dictionary mapping endpoint name to its section content
+        """
+        for name, content in sections.items():
+            endpoint_section = f"## {name}\n{content}"
+            self.content += "\n\n" + endpoint_section
 
     def _extract_endpoint_sections(self) -> list[str]:
         """Extract individual endpoint sections from the markdown"""

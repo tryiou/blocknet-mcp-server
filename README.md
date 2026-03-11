@@ -29,6 +29,8 @@ generates:
 - **Async/Await**: Built on asyncio for high-performance I/O
 - **Write Protection**: Sensitive operations are flagged and can be disabled via `MCP_ALLOW_WRITE`. The list of
   protected RPC methods is defined in `src/write_protected.yaml` and can be customized.
+- **Preserved Endpoints**: Certain endpoints can be preserved from commented-out sections in API docs. Configured via
+  `src/preserved_endpoints.yaml`.
 - **Structured Logging**: Uses structlog for observability
 - **Test Generation**: Auto-generates integration tests from sample requests
  - **Security First**: No hardcoded credentials, environment-based config
@@ -262,6 +264,28 @@ To customize, edit `src/write_protected.yaml`. The YAML file should contain a ma
 `xr`) to lists of RPC method names. If the file is missing or invalid, the generator falls back to built-in defaults.
 Unknown method names (typos, outdated docs) will trigger a warning during generation.
 
+### Preserved Endpoints
+
+Sometimes API documentation contains endpoints that are commented out (within HTML `<!-- -->` blocks). These are
+typically endpoints not yet ready for public release. By default, the parser removes all HTML comments and excludes
+those endpoints from the generated server.
+
+To preserve specific endpoints from commented sections, add them to `src/preserved_endpoints.yaml`:
+
+```yaml
+# Preserved Endpoints Configuration
+xr:
+  - xrService
+  - xrServiceConsensus
+```
+
+The YAML file maps prefixes (`dx`, `xr`) to lists of endpoint names to preserve. During parsing, these endpoints are
+extracted from comments before removal and re-inserted into the parsed content. The generator will then create MCP
+tools for these endpoints.
+
+**Note**: Preserved endpoints still appear with the `@write_protected` decorator if they are also in
+`write_protected.yaml`.
+
 ## Architecture
 
 ### Code Generation Flow
@@ -345,6 +369,7 @@ blocknet-mcp-server/
 │   ├── parser.py             # Markdown → ApiSpec
 │   ├── generator.py          # Code generator
 │   ├── write_protected.yaml  # Protected RPC methods
+│   ├── preserved_endpoints.yaml # Endpoints to preserve from comments
 │   └── templates/            # Jinja2 templates
 ├── generated/             # Generated output (gitignored)
 │   ├── xbridge_mcp/
@@ -484,6 +509,10 @@ def generate_server(prefix: str, doc_path: str | None = None) -> None:
 4. Review generated code in `generated/`
 5. Run tests: `pytest` and `python tests/test_live.py`
 
+> **Note**: If an endpoint is commented out in the API documentation (within `<!-- -->`), it won't appear in
+> the generated server by default. To preserve specific commented endpoints, add them to
+> `src/preserved_endpoints.yaml` and regenerate. See [Preserved Endpoints](#preserved-endpoints) for details.
+
 ### Regenerating After Documentation Changes
 
 ```bash
@@ -537,11 +566,9 @@ Protected tools are decorated with `@write_protected` and require `MCP_ALLOW_WRI
 
 Protected tools include:
 
-**XBridge**: `dxMakeOrder`, `dxMakePartialOrder`, `dxTakeOrder`, `dxCancelOrder`, `dxFlushCancelledOrders`,
-`dxSplitAddress`, `dxSplitInputs`, `dxLoadXBridgeConf`
+**XBridge**: `dxMakeOrder`, `dxMakePartialOrder`, `dxTakeOrder`, `dxCancelOrder`, `dxSplitAddress`, `dxSplitInputs`, `dxLoadXBridgeConf`
 
-**XRouter**: `xrUpdateNetworkServices`, `xrConnect`, `xrSendTransaction`, `xrService`, `xrServiceConsensus`,
-`xrReloadConfigs`
+**XRouter**: None
 
 > **Note**: This list is defined in `src/write_protected.yaml` and can be customized. The generator
 > validates that protected methods exist in the API documentation and warns about unknown entries.

@@ -328,3 +328,282 @@ class TestResponseTypeInference:
         ep = xrouter.endpoints.get("xrReloadConfigs")
         assert ep is not None
         assert ep.response_type == "bool", f"Expected 'bool', got '{ep.response_type}'"
+
+
+class TestPreservedEndpoints:
+    """Tests for preserving endpoints from HTML comments"""
+
+    def test_multi_endpoint_comment_block(self, tmp_path):
+        """Test extraction of multiple endpoints in the same comment block"""
+        doc_content = """# XRouter API
+
+## xrNormalEndpoint
+
+> Sample Request
+
+```shell
+blocknet-cli xrNormalEndpoint
+```
+
+This is a normal endpoint.
+
+## <!--
+## xrService
+
+> Sample Request
+
+```shell
+blocknet-cli xrService BTC
+```
+
+This is a preserved service.
+
+## xrServiceConsensus
+
+> Sample Request
+
+```shell
+blocknet-cli xrServiceConsensus 1 BTC
+```
+
+This is a preserved consensus service.
+-->
+"""
+        doc_path = tmp_path / "test.md"
+        doc_path.write_text(doc_content)
+
+        parser = MarkdownParser(str(doc_path), "xr")
+        with open(doc_path, encoding="utf-8") as f:
+            parser.content = f.read()
+
+        preserved = parser._extract_preserved_endpoints(["xrService", "xrServiceConsensus"])
+
+        assert "xrService" in preserved
+        assert "xrServiceConsensus" in preserved
+        assert "This is a preserved service." in preserved["xrService"]
+        assert "This is a preserved consensus service." in preserved["xrServiceConsensus"]
+
+    def test_same_line_comment_start(self, tmp_path):
+        """Test extraction when <!-- is on the same line as ## endpoint"""
+        doc_content = """# XRouter API
+
+## <!-- ## xrService
+
+> Sample Request
+
+```shell
+blocknet-cli xrService BTC
+```
+
+This is a preserved service.
+
+-->
+"""
+        doc_path = tmp_path / "test.md"
+        doc_path.write_text(doc_content)
+
+        parser = MarkdownParser(str(doc_path), "xr")
+        with open(doc_path, encoding="utf-8") as f:
+            parser.content = f.read()
+
+        preserved = parser._extract_preserved_endpoints(["xrService"])
+
+        assert "xrService" in preserved
+        assert "This is a preserved service." in preserved["xrService"]
+
+    def test_single_endpoint_comment_block(self, tmp_path):
+        """Test extraction of a single endpoint in a comment block"""
+        doc_content = """# XRouter API
+
+## xrNormalEndpoint
+
+> Sample Request
+
+```shell
+blocknet-cli xrNormalEndpoint
+```
+
+This is a normal endpoint.
+
+## <!--
+## xrService
+
+> Sample Request
+
+```shell
+blocknet-cli xrService BTC
+```
+
+This is a preserved service.
+-->
+"""
+        doc_path = tmp_path / "test.md"
+        doc_path.write_text(doc_content)
+
+        parser = MarkdownParser(str(doc_path), "xr")
+        with open(doc_path, encoding="utf-8") as f:
+            parser.content = f.read()
+
+        preserved = parser._extract_preserved_endpoints(["xrService"])
+
+        assert "xrService" in preserved
+        assert "This is a preserved service." in preserved["xrService"]
+
+    def test_whitespace_variations(self, tmp_path):
+        """Test extraction with different whitespace patterns after <!--"""
+        doc_content = """# XRouter API
+
+## <!--  ## xrService
+
+> Sample Request
+
+```shell
+blocknet-cli xrService BTC
+```
+
+This is preserved with extra whitespace.
+
+-->
+"""
+        doc_path = tmp_path / "test.md"
+        doc_path.write_text(doc_content)
+
+        parser = MarkdownParser(str(doc_path), "xr")
+        with open(doc_path, encoding="utf-8") as f:
+            parser.content = f.read()
+
+        preserved = parser._extract_preserved_endpoints(["xrService"])
+
+        assert "xrService" in preserved
+        assert "This is preserved with extra whitespace." in preserved["xrService"]
+
+    def test_filter_non_preserved_endpoints(self, tmp_path):
+        """Test that only specified endpoints are preserved"""
+        doc_content = """# XRouter API
+
+## <!--
+## xrService
+
+> Sample Request
+
+```shell
+blocknet-cli xrService BTC
+```
+
+Service content.
+
+## xrServiceConsensus
+
+> Sample Request
+
+```shell
+blocknet-cli xrServiceConsensus 1 BTC
+```
+
+Consensus content.
+
+## xrOtherEndpoint
+
+> Sample Request
+
+```shell
+blocknet-cli xrOtherEndpoint
+```
+
+Other endpoint content.
+-->
+"""
+        doc_path = tmp_path / "test.md"
+        doc_path.write_text(doc_content)
+
+        parser = MarkdownParser(str(doc_path), "xr")
+        with open(doc_path, encoding="utf-8") as f:
+            parser.content = f.read()
+
+        preserved = parser._extract_preserved_endpoints(["xrService"])
+
+        assert "xrService" in preserved
+        assert "xrServiceConsensus" not in preserved
+        assert "xrOtherEndpoint" not in preserved
+
+    def test_no_comment_blocks(self, tmp_path):
+        """Test extraction when there are no comment blocks"""
+        doc_content = """# XRouter API
+
+## xrNormalEndpoint
+
+> Sample Request
+
+```shell
+blocknet-cli xrNormalEndpoint
+```
+
+This is a normal endpoint.
+"""
+        doc_path = tmp_path / "test.md"
+        doc_path.write_text(doc_content)
+
+        parser = MarkdownParser(str(doc_path), "xr")
+        with open(doc_path, encoding="utf-8") as f:
+            parser.content = f.read()
+
+        preserved = parser._extract_preserved_endpoints(["xrService"])
+
+        assert len(preserved) == 0
+
+    def test_insert_preserved_endpoints(self, tmp_path):
+        """Test that preserved endpoints are correctly inserted into content"""
+        doc_content = """# XRouter API
+
+## xrNormalEndpoint
+
+> Sample Request
+
+```shell
+blocknet-cli xrNormalEndpoint
+```
+
+This is a normal endpoint.
+"""
+        doc_path = tmp_path / "test.md"
+        doc_path.write_text(doc_content)
+
+        parser = MarkdownParser(str(doc_path), "xr")
+        with open(doc_path, encoding="utf-8") as f:
+            parser.content = f.read()
+
+        preserved_sections = {
+            "xrService": "This is preserved content.\n\n### Params\n\nparam1 | string",
+        }
+        parser._insert_preserved_endpoints(preserved_sections)
+
+        assert "## xrService" in parser.content
+        assert "This is preserved content." in parser.content
+
+    def test_actual_xrouter_docs_preservation(self):
+        """Test preservation works with actual XRouter documentation"""
+        parser = MarkdownParser("blocknet-api-docs/source/includes/_xrouter.md", "xr")
+        with open("blocknet-api-docs/source/includes/_xrouter.md", encoding="utf-8") as f:
+            parser.content = f.read()
+
+        preserved = parser._extract_preserved_endpoints(["xrService", "xrServiceConsensus"])
+
+        assert "xrService" in preserved
+        assert "xrServiceConsensus" in preserved
+        assert "XCloud" in preserved["xrService"]
+        assert "XCloud" in preserved["xrServiceConsensus"]
+
+    def test_full_parse_with_preserved_endpoints(self):
+        """Test full parse includes preserved endpoints"""
+        spec = parse_api_docs("blocknet-api-docs/source/includes/_xrouter.md", "xr")
+
+        assert "xrService" in spec.endpoints
+        assert "xrServiceConsensus" in spec.endpoints
+
+        ep_service = spec.endpoints["xrService"]
+        assert "XCloud" in ep_service.description
+        assert len(ep_service.params) > 0
+
+        ep_consensus = spec.endpoints["xrServiceConsensus"]
+        assert "XCloud" in ep_consensus.description
+        assert len(ep_consensus.params) > 0

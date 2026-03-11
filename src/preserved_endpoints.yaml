@@ -1,0 +1,9 @@
+# Preserved Endpoints Configuration
+# Endpoints that should be preserved even if commented out in API documentation.
+# Structure: prefix (dx|xr) -> list of RPC method names
+
+xr:
+  - xrService
+  - xrServiceConsensus
+
+dx: []

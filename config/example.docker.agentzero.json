@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+        "blocknet_xbridge": {
+            "url": "http://host.docker.internal:8081/mcp",
+            "type": "streamable-http"
+        },
+        "blocknet_xrouter": {
+            "url": "http://host.docker.internal:8082/mcp",
+            "type": "streamable-http"
+        }
+    }
+}

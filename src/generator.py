@@ -37,19 +37,11 @@ _DEFAULT_WRITE_PROTECTED = {
         "dxMakePartialOrder",
         "dxTakeOrder",
         "dxCancelOrder",
-        "dxFlushCancelledOrders",
         "dxSplitAddress",
         "dxSplitInputs",
         "dxLoadXBridgeConf",
     ],
-    "xr": [
-        "xrUpdateNetworkServices",
-        "xrConnect",
-        "xrSendTransaction",
-        "xrService",
-        "xrServiceConsensus",
-        "xrReloadConfigs",
-    ],
+    "xr": [],
 }
 
 
