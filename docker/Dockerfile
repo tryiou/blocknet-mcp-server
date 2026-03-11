@@ -1,6 +1,6 @@
 # Multi-stage Docker build for Blocknet MCP servers
-# Build with: docker build --build-arg SERVER_TYPE=xbridge -t xbridge-mcp .
-# Or: docker build --build-arg SERVER_TYPE=xrouter -t xrouter-mcp .
+# Usage: docker compose -f docker/docker-compose.yml build xbridge-mcp
+#   Or:  docker build --build-arg SERVER_TYPE=xbridge -t xbridge-mcp -f docker/Dockerfile ..
 
 ARG SERVER_TYPE=xbridge
 
@@ -20,7 +20,7 @@ RUN git clone --depth 1 https://github.com/blocknetdx/api-docs blocknet-api-docs
 # Copy generator code and dependencies
 COPY requirements.txt .
 COPY main.py .
-COPY scripts/ scripts/
+COPY src/ src/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -43,6 +43,9 @@ WORKDIR /app
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
 USER app
+
+# Add local bin to PATH for installed scripts
+ENV PATH=/home/app/.local/bin:$PATH
 
 # Copy generated server from builder
 ARG SERVER_TYPE

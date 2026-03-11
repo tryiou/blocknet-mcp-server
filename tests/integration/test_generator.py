@@ -1,6 +1,6 @@
 """Integration tests for Generator - end-to-end code generation"""
 
-from scripts.generate.generator import Generator
+from src.generator import Generator
 
 
 def test_generator_xbridge(tmp_path):

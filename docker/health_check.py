@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Health check and info script for Blocknet MCP Docker containers."""
 
-import sys
 import json
 import subprocess
-from pathlib import Path
+import sys
 
 try:
     import httpx
@@ -48,7 +47,7 @@ def get_ports_from_compose(compose_path="docker-compose.yml"):
     ports = {}
 
     try:
-        with open(compose_path, "r") as f:
+        with open(compose_path) as f:
             compose = yaml.safe_load(f)
 
         services = compose.get("services", {})
@@ -151,7 +150,7 @@ def get_mcp_tools(url):
                     tools = payload.get("result", {}).get("tools", [])
                     tool_names = [t["name"] for t in tools]
                     return session_id, tool_names
-                except:
+                except Exception:
                     break
 
         return session_id, None
@@ -231,7 +230,6 @@ def main():
 
     print("Container Status:")
     for name in ["xbridge-mcp", "xrouter-mcp", "blocknet-core"]:
-        status = docker_status["containers"].get(name, "MISSING")
         emoji = "✅" if name in docker_status["containers"] else "❌"
         print(f"  {emoji} {name}")
 
@@ -239,12 +237,12 @@ def main():
     if xb_tools:
         print(f"  ✅ XBridge MCP - {len(xb_tools)} tools ({len(xb_protected or [])} protected)")
     else:
-        print(f"  ❌ XBridge MCP - Not responding")
+        print("  ❌ XBridge MCP - Not responding")
 
     if xr_tools:
         print(f"  ✅ XRouter MCP - {len(xr_tools)} tools ({len(xr_protected or [])} protected)")
     else:
-        print(f"  ❌ XRouter MCP - Not responding")
+        print("  ❌ XRouter MCP - Not responding")
 
     print()
 

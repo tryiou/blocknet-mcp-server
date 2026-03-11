@@ -13,7 +13,7 @@ import jinja2
 import structlog
 import yaml
 
-from scripts.generate.parser import ApiSpec, parse_api_docs
+from src.parser import ApiSpec, parse_api_docs
 
 PREFIX_CONFIG = {
     "dx": {

@@ -3,9 +3,9 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from scripts.generate import generator
-from scripts.generate.generator import PREFIX_CONFIG, WRITE_PROTECTED, Generator
-from scripts.generate.parser import ApiSpec, ParamSpec, parse_api_docs
+from src import generator
+from src.generator import PREFIX_CONFIG, WRITE_PROTECTED, Generator
+from src.parser import ApiSpec, ParamSpec, parse_api_docs
 
 
 class TestGeneratorInit:

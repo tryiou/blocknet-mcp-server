@@ -19,7 +19,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from scripts.generate.generator import WRITE_PROTECTED, Generator
+from src.generator import WRITE_PROTECTED, Generator
 
 FILENAME_MAP = {
     "dx": "_xbridge.md",

@@ -253,35 +253,32 @@ XROUTER_TESTS = [
 
 def resolve_params(param_template, context):
     """Resolve placeholders in parameter template using context."""
-    resolved = {}
     now = int(time.time())
     one_day_ago = now - 86400
 
+    mapping = {
+        "MAKER": context.maker,
+        "TAKER": context.taker,
+        "BLOCKCHAIN": context.block_chain,
+        "FIRST_ORDER_ID": context.order_ids[0] if context.order_ids else None,
+        "HEIGHT": str(context.block_height) if context.block_height else None,
+        "HASH": context.block_hash if context.block_hash else None,
+        "EPOCH_NOW": now,
+        "EPOCH_1D_AGO": one_day_ago,
+    }
+
+    dummy_defaults = {
+        "tx_hex": "0200000001" + "0" * 56 + "00000000",
+        "tx_id": "0" * 64,
+        "tx_ids": "0" * 64,
+    }
+
+    resolved = {}
     for key, value in param_template.items():
-        if value == "MAKER":
-            resolved[key] = context.maker
-        elif value == "TAKER":
-            resolved[key] = context.taker
-        elif value == "BLOCKCHAIN":
-            resolved[key] = context.block_chain
-        elif value == "FIRST_ORDER_ID":
-            resolved[key] = context.order_ids[0] if context.order_ids else None
-        elif value == "HEIGHT":
-            resolved[key] = str(context.block_height) if context.block_height else None
-        elif value == "HASH":
-            resolved[key] = context.block_hash if context.block_hash else None
-        elif value == "EPOCH_NOW":
-            resolved[key] = now
-        elif value == "EPOCH_1D_AGO":
-            resolved[key] = one_day_ago
+        if value in mapping:
+            resolved[key] = mapping[value]
         elif value == "DUMMY":
-            # Use placeholder values that will likely fail but test the tool exists
-            if key == "tx_hex":
-                resolved[key] = "0200000001" + "0" * 56 + "00000000"
-            elif key == "tx_id":
-                resolved[key] = "0" * 64
-            elif key == "tx_ids":
-                resolved[key] = "0" * 64
+            resolved[key] = dummy_defaults.get(key, "")
         else:
             resolved[key] = value
 

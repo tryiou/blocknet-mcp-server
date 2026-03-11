@@ -1,6 +1,6 @@
 """Unit tests for the MarkdownParser module"""
 
-from scripts.generate.parser import (
+from src.parser import (
     ApiSpec,
     EndpointSpec,
     MarkdownParser,

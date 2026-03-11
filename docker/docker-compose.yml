@@ -3,6 +3,8 @@ services:
     image: blocknetdx/blocknet:latest
     container_name: blocknet-core
     user: "${UID:-1000}:${GID:-1000}"
+    env_file:
+      - ../.env
     command: blocknetd -datadir=/opt/blockchain/blocknet
     restart: on-failure:3
     environment:
@@ -29,11 +31,13 @@ services:
 
   xbridge-mcp:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         - SERVER_TYPE=xbridge
     container_name: xbridge-mcp
+    env_file:
+      - ../.env
     depends_on:
       blocknet-core:
         condition: service_healthy
@@ -52,11 +56,13 @@ services:
 
   xrouter-mcp:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         - SERVER_TYPE=xrouter
     container_name: xrouter-mcp
+    env_file:
+      - ../.env
     depends_on:
       blocknet-core:
         condition: service_healthy

@@ -4,8 +4,8 @@ This repository contains Docker configuration to run Blocknet MCP servers with a
 
 ## Files
 
-- `Dockerfile` - Multi-stage build that generates and runs MCP servers
-- `docker-compose.yml` - Orchestrates blocknet-core, xbridge-mcp, xrouter-mcp
+- `docker/Dockerfile` - Multi-stage build that generates and runs MCP servers
+- `docker/docker-compose.yml` - Orchestrates blocknet-core, xbridge-mcp, xrouter-mcp
 - `.dockerignore` - Excludes unnecessary files from build context
 
 ## Prerequisites
@@ -20,15 +20,15 @@ This repository contains Docker configuration to run Blocknet MCP servers with a
 
 ```bash
 # Create .env file
-cp .env.example .env
+cp config/.env.example .env
 
 # edit/save the .env with your blocknet core rpc credentials/port
 ```
 
-2. Start all services:
+2. Build and start services:
 
 ```bash
-docker compose up -d
+./build-docker.sh --all --up
 ```
 
 This will:
@@ -39,15 +39,15 @@ This will:
 3. Check status:
 
 ```bash
-docker compose ps
-docker compose logs -f xbridge-mcp
-docker compose logs -f xrouter-mcp
+./build-docker.sh --logs
+# or follow logs:
+./build-docker.sh --logs --follow
 ```
 
 4. Stop services:
 
 ```bash
-docker compose down
+./build-docker.sh --down
 ```
 
 ## Configuration
@@ -65,7 +65,7 @@ Configurable via environment variables in `docker-compose.yml`:
 - `MCP_ALLOW_WRITE` - Default: `false` (set to `true` to enable write operations)
 - `MCP_LOG_LEVEL` - Default: `INFO` (DEBUG, INFO, WARNING, ERROR)
 - `MCP_TRANSPORT` - Default: `stdio` (transport mode: `stdio` or `http`)
-- `MCP_PORT` - Default: `8080` (HTTP port when `MCP_TRANSPORT=http`)
+- `MCP_PORT` - Default: `8081` (XBridge) / `8082` (XRouter)
 
 ### Volumes
 
@@ -101,8 +101,8 @@ docker compose build
 Or build individually:
 
 ```bash
-docker build --build-arg SERVER_TYPE=xbridge -t xbridge-mcp .
-docker build --build-arg SERVER_TYPE=xrouter -t xrouter-mcp .
+docker build --build-arg SERVER_TYPE=xbridge -t xbridge-mcp -f docker/Dockerfile ..
+docker build --build-arg SERVER_TYPE=xrouter -t xrouter-mcp -f docker/Dockerfile ..
 ```
 
 ## Logs
@@ -178,7 +178,7 @@ sudo lsof -i :41414
 | `MCP_ALLOW_WRITE` | false | No | Enable write operations (use with caution) |
 | `MCP_LOG_LEVEL` | INFO | No | Logging level (DEBUG, INFO, WARNING, ERROR) |
 | `MCP_TRANSPORT` | stdio | No | Transport mode: `stdio` or `http` |
-| `MCP_PORT` | 8080 | No* | HTTP port (only used if MCP_TRANSPORT=http) |
+| `MCP_PORT` | 8081/8082 | No* | HTTP port (8081 for XBridge, 8082 for XRouter) |
 | `BLOCKNET_CHAINDIR` | ~/.blocknet/ | No | Path to blockchain data |
 
 *Required if MCP_TRANSPORT=http
