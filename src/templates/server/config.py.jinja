@@ -11,27 +11,27 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 class {{ rpc.client_class_name }}Settings(BaseSettings):
     """{{ server.display_name }} RPC Configuration"""
 
-    rpc_host: str = "{{ server.host }}"
-    rpc_port: int = {{ server.port }}
+    rpc_host: str = Field()
+    rpc_port: int = Field()
     rpc_user: str = Field(min_length=1)
     rpc_password: str = Field(min_length=1)
-    rpc_timeout: int = {{ server.timeout }}
-    
+    rpc_timeout: int = Field()
+
     model_config = SettingsConfigDict(
         env_prefix="",
         env_file=str(_PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
         extra="ignore"
     )
-    
+
     @property
     def rpc_url(self) -> str:
         return f"http://{self.rpc_host}"
-    
+
     @property
     def full_url(self) -> str:
         return f"{self.rpc_url}:{self.rpc_port}"
-    
+
     @property
     def is_configured(self) -> bool:
         return bool(self.rpc_user and self.rpc_password)
@@ -39,16 +39,16 @@ class {{ rpc.client_class_name }}Settings(BaseSettings):
 
 class MCPSettings(BaseSettings):
     """MCP Server Configuration"""
-    
-    server_name: str = "{{ server.server_name }}"
-    log_level: str = "INFO"
-    allow_write: bool = False
-    transport: str = "stdio"  # "stdio" or "http"
-    port: int = 8080  # Port for HTTP transport
-    host: str = "0.0.0.0"  # Host to bind HTTP server
-    
+
+    server_name: str = Field()
+    log_level: str = Field()
+    allow_write: bool = Field()
+    transport: str = Field()
+    port: int = Field()
+    host: str = Field()
+
     model_config = SettingsConfigDict(
-        env_prefix="MCP_",
+        env_prefix="{{ server.env_prefix }}_",
         env_file=str(_PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
         extra="ignore"

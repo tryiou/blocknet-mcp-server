@@ -21,12 +21,14 @@ PREFIX_CONFIG = {
         "display_name": "XBridge",
         "client_class_name": "AsyncXBridgeClient",
         "doc_path": "blocknet-api-docs/source/includes/_xbridge.md",
+        "env_prefix": "XBRIDGE_MCP",
     },
     "xr": {
         "name": "xrouter_mcp",
         "display_name": "XRouter",
         "client_class_name": "AsyncXRouterClient",
         "doc_path": "blocknet-api-docs/source/includes/_xrouter.md",
+        "env_prefix": "XROUTER_MCP",
     },
 }
 

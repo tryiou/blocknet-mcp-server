@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "blocknet_xbridge": {
+      "baseUrl": "http://172.20.0.1:8081/mcp"
+    },
+    "blocknet_xrouter": {
+      "baseUrl": "http://172.20.0.1:8082/mcp"
+    }
+  },
+  "imports": []
+}

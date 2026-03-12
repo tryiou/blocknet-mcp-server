@@ -50,5 +50,4 @@ def write_protected(func: Callable) -> Callable:
                 f"Set MCP_ALLOW_WRITE=true to enable {func.__name__}."
             )
         return await func(*args, **kwargs)
-    
     return wrapper
