@@ -21,12 +21,14 @@ PREFIX_CONFIG = {
         "display_name": "XBridge",
         "client_class_name": "AsyncXBridgeClient",
         "doc_path": "blocknet-api-docs/source/includes/_xbridge.md",
+        "env_prefix": "XBRIDGE_MCP",
     },
     "xr": {
         "name": "xrouter_mcp",
         "display_name": "XRouter",
         "client_class_name": "AsyncXRouterClient",
         "doc_path": "blocknet-api-docs/source/includes/_xrouter.md",
+        "env_prefix": "XROUTER_MCP",
     },
 }
 
@@ -315,7 +317,7 @@ class Generator:
             lines.append(f'    "{rpc_method}": EndpointSpec(')
             lines.append(f'        rpc_method="{endpoint.rpc_method}",')
             lines.append(f'        tool_name="{endpoint.tool_name}",')
-            desc = endpoint.description[:100].replace('"', '\\"')
+            desc = endpoint.description.replace('"', '\\"')
             lines.append(f'        description="{desc}",')
             lines.append(f"        params={[p.name for p in endpoint.params]},")
             lines.append("    ),")
@@ -391,7 +393,7 @@ class Generator:
         return {
             "tool_name": endpoint.tool_name,
             "rpc_method": endpoint.rpc_method,
-            "description": (endpoint.description or "")[:100],
+            "description": endpoint.description or "",
             "param_names": param_names,
             "param_template": str(param_template),
             "invalid_param_template": str(invalid_template),

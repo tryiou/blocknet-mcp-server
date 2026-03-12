@@ -1,12 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-     "xbridge": {
+     "blocknet_xbridge": {
        "type": "remote",
        "url": "http://localhost:8081/mcp",
        "enabled": true
      },
-     "xrouter": {
+     "blocknet_xrouter": {
        "type": "remote",
        "url": "http://localhost:8082/mcp",
        "enabled": true

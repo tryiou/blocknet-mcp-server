@@ -23,43 +23,48 @@ async def {{ endpoint.tool_name }}({% if endpoint.params %}
 {{ format_params(endpoint.params) }}
 {% endif %}) -> {{ endpoint.response_type }}:
     """
-    {{ endpoint.description }}
-    {% if endpoint.params %}
+{{- endpoint.description }}
+{%- if endpoint.params %}
     Args:
-        {% for param in endpoint.params %}
+{%- for param in endpoint.params %}
         {{ param.name }}: {{ param.description }} ({% if param.required %}required{% else %}optional{% endif %})
-        {% endfor %}
-    {% endif %}
+{%- endfor %}
+{%- endif %}
     """
     logger.info("{{ endpoint.tool_name }}_called")
-    
-    params = [
-{% for param in endpoint.params %}
-        {{ param.name }}{% if not loop.last %},{% endif %}
-{% endfor %}
-    ]
-    # Filter out None values (for optional parameters without explicit value)
-    params = [p for p in params if p is not None]
+
+{%- set has_variadic = endpoint.params|selectattr('param_type', 'equalto', 'unknown')|list -%}
+{%- if has_variadic %}
+    # Build params list - automatically detect variadic params
+    # Params with type=unknown are variadic and should be split by whitespace
+{%- endif %}
+    params = []
+{%- for param in endpoint.params %}
+    {%- if param.param_type == 'unknown' %}
+    # Variadic parameter detected ({{ param.name }}) - split by whitespace
+    if {{ param.name }} is not None:
+        params.extend([p for p in str({{ param.name }}).split() if p])
+    {%- else %}
+    if {{ param.name }} is not None:
+        params.append({{ param.name }})
+    {%- endif %}
+{%- endfor %}
     client = get_client()
     result = await client.call("{{ rpc_method }}", params)
-    
     logger.info("{{ endpoint.tool_name }}_completed")
     return result
 
 {% endfor %}
 
-# Store tools for registration
-_generated_tools = []
-
 def register_generated_tools(mcp: FastMCP, get_client_func):
     """Register all generated tools with MCP server"""
     global get_client
     get_client = get_client_func
-    
+
     # Import and register each tool
     import sys
     this_module = sys.modules[__name__]
-    
+
     # Find all async functions decorated with @mcp.tool()
     for name in dir(this_module):
         if name.startswith("{{ tool_prefix }}"):
