@@ -70,9 +70,6 @@ def generate_server(prefix: str, doc_path: str | None = None) -> None:
     """Generate a single MCP server"""
     resolved_doc = get_doc_path(prefix, doc_path)
 
-    if not Path(resolved_doc).exists():
-        raise FileNotFoundError(f"Doc file not found: {resolved_doc}")
-
     pkg_name = PREFIX_MAP.get(prefix, {}).get("name", prefix)
     output_dir = Path("generated") / f"{pkg_name}_mcp"
 
